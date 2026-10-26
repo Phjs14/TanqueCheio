@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#18181B" />
+  <meta name="description" content="TanqueCheio — Rode mais, pague menos." />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <title>TanqueCheio — Rode mais, pague menos</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    :root{
+      --bg:#18181B; --card:#232329; --card2:#2D2D35; --line:#3F3F46;
+      --acc:#10B981; --acc-ink:#04130D; --txt:#F4F4F5; --mut:#A1A1AA;
+      --red:#EF4444; --yel:#EAB308; --grn:#10B981;
+      --tap:56px;                                   /* alvo de toque amplo (uso no veículo) */
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+      font:17px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+    body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+
+    header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px}
+    .brand b{font-size:1.25rem;color:var(--acc)} .brand small{display:block;color:var(--mut);font-size:.75rem}
+    .gps{font-size:.8rem;padding:6px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
+    .gps.ok{color:var(--acc);border-color:var(--acc)} .gps.bad{color:var(--red);border-color:var(--red)}
+
+    .busca{padding:0 14px 10px;display:grid;gap:8px}
+    input,select,button{font:inherit;color:var(--txt)}
+    input,select{width:100%;min-height:var(--tap);padding:0 14px;background:var(--card);
+      border:1px solid var(--line);border-radius:14px}
+    input:focus,select:focus,button:focus-visible{outline:3px solid var(--acc);outline-offset:1px}
+    .btn{min-height:var(--tap);border:0;border-radius:14px;padding:0 18px;font-weight:700;cursor:pointer;
+      background:var(--acc);color:var(--acc-ink)}
+    .btn.sec{background:var(--card2);color:var(--txt)}
+    .btn:disabled{background:var(--card2);color:var(--mut);cursor:not-allowed}
+    .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+    .chip{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:99px;background:var(--card);
+      border:1px solid var(--line);cursor:pointer}
+    .chip[aria-pressed="true"]{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:700}
+
+    #map{height:36vh;min-height:220px;background:#111}
+    /* Mapa escuro sem depender de provedor pago: inverte os tiles claros do OSM */
+    .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.8)}
+    .pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+      border:3px solid #fff;display:grid;place-items:center}
+    .pin span{transform:rotate(45deg);font-size:12px;font-weight:800;color:#000}
+
+    nav.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--card);border-block:1px solid var(--line)}
+    nav.tabs button{min-height:var(--tap);background:none;border:0;border-bottom:4px solid transparent;font-weight:700;color:var(--mut)}
+    nav.tabs button[aria-selected="true"]{color:var(--acc);border-bottom-color:var(--acc)}
+
+    #lista{flex:1;overflow-y:auto;padding:12px 14px calc(14px + env(safe-area-inset-bottom));display:grid;gap:10px;align-content:start}
+    .posto{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;display:grid;gap:8px}
+    .posto h3{margin:0;font-size:1.05rem} .meta{color:var(--mut);font-size:.85rem}
+    .linha{display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .preco{font-size:1.8rem;font-weight:800}
+    .preco.vazio{font-size:1rem;color:var(--mut);font-weight:500}
+    .selo{font-size:.78rem;padding:4px 10px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+    .selo.nao_verificado{color:var(--red)} .selo.pendente{color:var(--yel)} .selo.verificado{color:var(--grn)}
+    .vazio-msg{color:var(--mut);text-align:center;padding:24px 8px}
+
+    dialog{width:min(92vw,420px);background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:20px;padding:20px}
+    dialog::backdrop{background:rgba(0,0,0,.7)}
+    dialog h2{margin:0 0 4px} dialog form{display:grid;gap:12px;margin-top:12px}
+    dialog label{display:grid;gap:6px;color:var(--mut);font-size:.9rem}
+    #precoInput{font-size:2rem;font-weight:800;text-align:center;min-height:72px}
+    .erro{color:var(--red);min-height:1.2em;font-size:.9rem}
+    #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:90vw;background:var(--card2);
+      border:1px solid var(--acc);padding:12px 18px;border-radius:14px;opacity:0;pointer-events:none;transition:.25s;z-index:9999}
+    #toast.show{opacity:1}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><b>⛽ TanqueCheio</b><small>Rode mais, pague menos.</small></div>
+    <div id="gpsStatus" class="gps" role="status" aria-live="polite">GPS: buscando…</div>
+  </header>
+
+  <section class="busca" aria-label="Buscar rota">
+    <input id="origem"  type="text" placeholder="Origem (vazio = minha localização)" autocomplete="off" />
+    <input id="destino" type="text" placeholder="Destino (ex.: Salvador, BA)" autocomplete="off" />
+    <button id="btnRota" class="btn">Buscar postos na rota</button>
+    <div class="chips" id="chipsCombustivel" role="group" aria-label="Tipo de combustível"></div>
+  </section>
+
+  <div id="map" aria-label="Mapa"></div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tabRota"     aria-selected="true"  data-aba="rota">Na rota</button>
+    <button role="tab" id="tabProximos" aria-selected="false" data-aba="proximos">Próximos</button>
+  </nav>
+
+  <main id="lista" aria-live="polite"></main>
+
+  <!-- Modal rápido de atualização de preço -->
+  <dialog id="modalPreco">
+    <h2 id="mpNome">Posto</h2>
+    <div class="meta" id="mpInfo"></div>
+    <form id="formPreco" method="dialog">
+      <!-- Confirmação com 1 toque: aparece só quando o posto já tem preço cadastrado -->
+      <button class="btn" id="mpConfirmar" type="button" hidden></button>
+      <label>Combustível
+        <select id="mpTipo"></select>
+      </label>
+      <label>Preço na bomba (R$/L)
+        <input id="precoInput" inputmode="decimal" placeholder="0,00" autocomplete="off" required />
+      </label>
+      <div class="erro" id="mpErro" role="alert"></div>
+      <button class="btn" id="mpEnviar" type="submit">Enviar preço</button>
+      <button class="btn sec" id="mpCancelar" type="button">Cancelar</button>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

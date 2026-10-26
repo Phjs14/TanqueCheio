@@ -1,0 +1,20 @@
+{
+  "id": "/tanquecheio",
+  "name": "TanqueCheio — Rode mais, pague menos",
+  "short_name": "TanqueCheio",
+  "description": "Encontre o combustível mais barato ao longo da sua rota e atualize preços com outros motoristas.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#18181B",
+  "theme_color": "#18181B",
+  "categories": ["navigation", "travel", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
