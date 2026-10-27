@@ -1,16 +1,18 @@
 // =====================================================================
-// TanqueCheio — Service Worker
-// Estratégia: Stale-While-Revalidate (responde do cache NA HORA e atualiza
-// em segundo plano) para shell, bibliotecas CDN, tiles do mapa e consultas
-// GET externas. Ideal para rodovia com sinal fraco.
-// As chamadas ao Supabase são POST (RPC) e NÃO passam pelo cache;
-// o app.js guarda o último resultado no localStorage como fallback offline.
+// TanqueCheio — Service Worker v3
+// • Mapa e dados externos (tiles, Overpass, OSRM, Nominatim, CDNs): Stale-While-Revalidate
+//   (responde do cache NA HORA e atualiza em segundo plano) — ideal para rodovia com sinal fraco.
+// • Arquivos do app (index.html, app.js, config.js...): rede primeiro com limite de 4 s,
+//   cai para o cache se a rede estiver lenta/fora. Assim uma atualização publicada aparece
+//   logo, sem ficar preso numa versão antiga, e o app continua abrindo offline.
+// • Supabase (POST/RPC) não passa pelo cache; o app.js guarda o último resultado no localStorage.
 // =====================================================================
-const V = 'v2';
+const V = 'v3';
 const SHELL = `tc-shell-${V}`;
 const RUNTIME = `tc-runtime-${V}`;
 const TILES = `tc-tiles-${V}`;
 
+// ATENÇÃO: config.js fica fora da pré-carga de propósito (se ele não existir no servidor, o install falharia)
 const SHELL_FILES = ['./', './index.html', './app.js', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png'];
 
@@ -51,6 +53,23 @@ function staleWhileRevalidate(event, cacheName, maxEntries) {
   });
 }
 
+function networkFirst(event, cacheName, timeoutMs = 4000) {
+  return caches.open(cacheName).then(async (cache) => {
+    try {
+      const res = await Promise.race([
+        fetch(event.request),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs)),
+      ]);
+      if (res.ok) cache.put(event.request, res.clone());
+      return res;
+    } catch {
+      return (await cache.match(event.request, { ignoreSearch: true }))
+        || (event.request.mode === 'navigate' ? await cache.match('./index.html') : null)
+        || Response.error();
+    }
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;                     // POSTs (Supabase RPC) vão direto à rede
@@ -61,8 +80,7 @@ self.addEventListener('fetch', (event) => {
   if (url.hostname.endsWith('tile.openstreetmap.org')) {
     return event.respondWith(staleWhileRevalidate(event, TILES, 500));
   }
-  // Supabase (ex.: auth GET): sempre rede
-  if (url.hostname.endsWith('supabase.co')) return;
+  if (url.hostname.endsWith('supabase.co')) return;     // Supabase: sempre rede
 
   // Consultas externas GET (Overpass / OSRM / Nominatim): SWR com limite pequeno
   if (/overpass|osrm|nominatim/.test(url.hostname)) {
@@ -72,13 +90,8 @@ self.addEventListener('fetch', (event) => {
   if (/unpkg\.com|jsdelivr\.net/.test(url.hostname)) {
     return event.respondWith(staleWhileRevalidate(event, RUNTIME, 30));
   }
-  // App shell (mesma origem). Navegação offline cai no index.html
+  // Arquivos do próprio app
   if (url.origin === self.location.origin) {
-    if (req.mode === 'navigate') {
-      return event.respondWith(
-        staleWhileRevalidate(event, SHELL).then((r) => (r.type === 'error' ? caches.match('./index.html') : r))
-      );
-    }
-    return event.respondWith(staleWhileRevalidate(event, SHELL));
+    return event.respondWith(networkFirst(event, SHELL));
   }
 });

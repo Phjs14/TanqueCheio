@@ -16,92 +16,176 @@
       --bg:#18181B; --card:#232329; --card2:#2D2D35; --line:#3F3F46;
       --acc:#10B981; --acc-ink:#04130D; --txt:#F4F4F5; --mut:#A1A1AA;
       --red:#EF4444; --yel:#EAB308; --grn:#10B981;
-      --tap:56px;                                   /* alvo de toque amplo (uso no veículo) */
     }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
-      font:17px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-    body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+    html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--txt);
+      font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+    button,input,select{font:inherit;color:var(--txt)}
+    button{cursor:pointer}
+    button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc);outline-offset:1px}
 
-    header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px}
-    .brand b{font-size:1.25rem;color:var(--acc)} .brand small{display:block;color:var(--mut);font-size:.75rem}
-    .gps{font-size:.8rem;padding:6px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
-    .gps.ok{color:var(--acc);border-color:var(--acc)} .gps.bad{color:var(--red);border-color:var(--red)}
+    /* ===== MAPA em tela cheia (o foco do app) ===== */
+    #map{position:fixed;inset:0;z-index:0;background:#111}
+    /* Mapa escuro sem provedor pago: inverte os tiles claros do OSM (só os tiles, pins ficam normais) */
+    .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.8)}
 
-    .busca{padding:0 14px 10px;display:grid;gap:8px}
-    input,select,button{font:inherit;color:var(--txt)}
-    input,select{width:100%;min-height:var(--tap);padding:0 14px;background:var(--card);
-      border:1px solid var(--line);border-radius:14px}
-    input:focus,select:focus,button:focus-visible{outline:3px solid var(--acc);outline-offset:1px}
-    .btn{min-height:var(--tap);border:0;border-radius:14px;padding:0 18px;font-weight:700;cursor:pointer;
-      background:var(--acc);color:var(--acc-ink)}
-    .btn.sec{background:var(--card2);color:var(--txt)}
-    .btn:disabled{background:var(--card2);color:var(--mut);cursor:not-allowed}
-    .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-    .chip{flex:0 0 auto;min-height:44px;padding:0 14px;border-radius:99px;background:var(--card);
-      border:1px solid var(--line);cursor:pointer}
+    /* ===== BARRA DO TOPO (flutuante, compacta) ===== */
+    .topbar{position:fixed;z-index:20;left:0;right:0;top:0;display:grid;gap:8px;
+      padding:calc(8px + env(safe-area-inset-top)) 10px 0;pointer-events:none}
+    .topbar>*{pointer-events:auto}
+    .top-row{display:flex;justify-content:space-between;align-items:center;gap:8px;pointer-events:none}
+    .top-row>*{pointer-events:auto}
+    .brand{font-weight:800;font-size:.9rem;color:var(--acc);background:rgba(24,24,27,.86);
+      padding:7px 12px;border-radius:99px;backdrop-filter:blur(6px)}
+    .gps{font-size:.8rem;font-weight:600;padding:7px 12px;border-radius:99px;border:1px solid var(--line);
+      background:rgba(24,24,27,.86);backdrop-filter:blur(6px);min-height:34px}
+    .gps.ok{color:var(--acc);border-color:var(--acc)}
+    .gps.warn{color:var(--yel);border-color:var(--yel)}
+    .gps.bad{color:var(--red);border-color:var(--red)}
+    .gps.cta{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+
+    .card{background:rgba(35,35,41,.97);border:1px solid var(--line);border-radius:16px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+    .search{padding:8px;display:grid;gap:4px}
+    .field{display:flex;align-items:center;gap:6px}
+    .field input,#origem{flex:1;width:100%;min-height:46px;padding:0 12px;background:var(--bg);border:1px solid var(--line);border-radius:12px}
+    .go,.clear{min-width:48px;min-height:46px;border:0;border-radius:12px;font-weight:800;font-size:1.15rem}
+    .go{background:var(--acc);color:var(--acc-ink)}
+    .go:disabled{background:var(--card2);color:var(--mut)}
+    .clear{background:var(--card2)}
+    .link{background:none;border:0;color:var(--mut);text-align:left;padding:2px 4px;min-height:28px;font-size:.82rem}
+
+    .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+    .chips::-webkit-scrollbar{display:none}
+    .chip{flex:0 0 auto;min-height:36px;padding:0 13px;border-radius:99px;font-size:.85rem;
+      background:rgba(35,35,41,.97);border:1px solid var(--line)}
     .chip[aria-pressed="true"]{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:700}
 
-    #map{height:36vh;min-height:220px;background:#111}
-    /* Mapa escuro sem depender de provedor pago: inverte os tiles claros do OSM */
-    .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) saturate(.8)}
-    .pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-      border:3px solid #fff;display:grid;place-items:center}
-    .pin span{transform:rotate(45deg);font-size:12px;font-weight:800;color:#000}
+    /* ===== PINS E MARCADORES ===== */
+    .pin-wrap,.me-wrap{background:none!important;border:0!important}
+    .pin-preco{position:relative;transform:translate(-50%,calc(-100% - 7px));background:#18181B;border:2px solid var(--c);
+      color:#fff;font-weight:800;font-size:12px;padding:3px 7px;border-radius:10px;white-space:nowrap;
+      box-shadow:0 2px 6px rgba(0,0,0,.5);width:max-content}
+    .pin-preco::after{content:"";position:absolute;left:50%;bottom:-7px;width:8px;height:8px;background:#18181B;
+      border-right:2px solid var(--c);border-bottom:2px solid var(--c);transform:translateX(-50%) rotate(45deg)}
+    .pin-preco.sel{background:var(--acc);color:#04130D;border-color:#fff;font-size:14px}
+    .pin-preco.sel::after{background:var(--acc);border-color:#fff}
+    .pin-vazio{transform:translate(-50%,-50%);font-size:14px;background:#3F3F46;border:2px solid #71717A;
+      border-radius:50%;width:26px;height:26px;display:grid;place-items:center}
+    .pin-vazio.sel{background:var(--acc);border-color:#fff}
+    .me{width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#3B82F6;border:3px solid #fff;
+      box-shadow:0 0 0 0 rgba(59,130,246,.6);animation:pulso 2s infinite}
+    @keyframes pulso{70%{box-shadow:0 0 0 18px rgba(59,130,246,0)}100%{box-shadow:0 0 0 0 rgba(59,130,246,0)}}
 
-    nav.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--card);border-block:1px solid var(--line)}
-    nav.tabs button{min-height:var(--tap);background:none;border:0;border-bottom:4px solid transparent;font-weight:700;color:var(--mut)}
-    nav.tabs button[aria-selected="true"]{color:var(--acc);border-bottom-color:var(--acc)}
+    /* ===== PAINEL INFERIOR (bottom sheet: mini / peek / full) ===== */
+    .sheet{position:fixed;z-index:30;left:0;right:0;bottom:0;height:42vh;display:flex;flex-direction:column;
+      background:var(--bg);border-top:1px solid var(--line);border-radius:20px 20px 0 0;
+      box-shadow:0 -8px 24px rgba(0,0,0,.5);transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom)}
+    .sheet.mini{height:calc(88px + env(safe-area-inset-bottom))}
+    .sheet.peek{height:42vh}
+    .sheet.full{height:86vh}
+    .sheet.mini #lista,.sheet.mini .attr{display:none}
+    .sheet-head{flex:0 0 auto;touch-action:none}
+    .handle{display:grid;place-items:center;width:100%;height:26px;background:none;border:0}
+    .handle i{width:44px;height:5px;border-radius:9px;background:var(--line)}
+    .fab{position:absolute;right:12px;top:-62px;width:50px;height:50px;border-radius:50%;font-size:1.35rem;
+      background:var(--card);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.5)}
+    .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 12px 8px}
+    .tabs button{min-height:40px;border-radius:12px;background:var(--card);border:0;color:var(--mut);font-weight:700}
+    .tabs button[aria-selected="true"]{background:var(--acc);color:var(--acc-ink)}
 
-    #lista{flex:1;overflow-y:auto;padding:12px 14px calc(14px + env(safe-area-inset-bottom));display:grid;gap:10px;align-content:start}
-    .posto{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;display:grid;gap:8px}
-    .posto h3{margin:0;font-size:1.05rem} .meta{color:var(--mut);font-size:.85rem}
-    .linha{display:flex;justify-content:space-between;align-items:center;gap:10px}
-    .preco{font-size:1.8rem;font-weight:800}
-    .preco.vazio{font-size:1rem;color:var(--mut);font-weight:500}
-    .selo{font-size:.78rem;padding:4px 10px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+    #lista{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:0 12px 8px;display:grid;gap:8px;align-content:start}
+    .attr{flex:0 0 auto;text-align:center;padding:2px 8px 4px}
+    .attr .leaflet-control-attribution{float:none;display:inline-block;background:none!important;color:var(--mut);font-size:10px;margin:0;padding:0;box-shadow:none}
+    .attr a{color:var(--mut)}
+
+    .posto{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:8px;cursor:pointer}
+    .posto.sel{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+    .p-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .p-nome{font-weight:700;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .p-meta{color:var(--mut);font-size:.82rem}
+    .p-preco{font-size:1.5rem;font-weight:800;white-space:nowrap}
+    .p-preco.vazio{font-size:.82rem;color:var(--mut);font-weight:500;white-space:normal;text-align:right;max-width:110px}
+    .p-bottom{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .selo{font-size:.74rem;padding:3px 9px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
     .selo.nao_verificado{color:var(--red)} .selo.pendente{color:var(--yel)} .selo.verificado{color:var(--grn)}
-    .vazio-msg{color:var(--mut);text-align:center;padding:24px 8px}
+    .melhor{font-size:.74rem;color:var(--acc);font-weight:700}
+    .btn-mini{min-height:44px;padding:0 14px;border:0;border-radius:12px;background:var(--acc);color:var(--acc-ink);font-weight:700;font-size:.9rem;white-space:nowrap}
+    .btn-mini:disabled{background:var(--card2);color:var(--mut);cursor:not-allowed}
+    .vazio-msg{color:var(--mut);text-align:center;padding:18px 8px;font-size:.92rem}
 
+    .locbox{background:var(--card);border:1px solid var(--acc);border-radius:14px;padding:14px;display:grid;gap:8px}
+    .locbox.warn{border-color:var(--red)}
+    .locbox p,.locbox ol{margin:0;color:var(--mut);font-size:.88rem}
+    .locbox ol{padding-left:18px;display:grid;gap:4px}
+    .locbox b{color:var(--txt)}
+
+    /* ===== MODAL DE PREÇO ===== */
     dialog{width:min(92vw,420px);background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:20px;padding:20px}
     dialog::backdrop{background:rgba(0,0,0,.7)}
-    dialog h2{margin:0 0 4px} dialog form{display:grid;gap:12px;margin-top:12px}
+    dialog h2{margin:0 0 4px;font-size:1.15rem} dialog form{display:grid;gap:12px;margin-top:12px}
     dialog label{display:grid;gap:6px;color:var(--mut);font-size:.9rem}
+    dialog select,dialog input{width:100%;min-height:52px;padding:0 14px;background:var(--bg);border:1px solid var(--line);border-radius:14px}
     #precoInput{font-size:2rem;font-weight:800;text-align:center;min-height:72px}
+    dialog .btn{min-height:54px;border:0;border-radius:14px;padding:0 18px;font-weight:700;background:var(--acc);color:var(--acc-ink)}
+    dialog .btn.sec{background:var(--card2);color:var(--txt)}
+    dialog .btn:disabled{background:var(--card2);color:var(--mut)}
+    .meta{color:var(--mut);font-size:.85rem}
     .erro{color:var(--red);min-height:1.2em;font-size:.9rem}
-    #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:90vw;background:var(--card2);
-      border:1px solid var(--acc);padding:12px 18px;border-radius:14px;opacity:0;pointer-events:none;transition:.25s;z-index:9999}
+    #toast{position:fixed;left:50%;top:calc(120px + env(safe-area-inset-top));transform:translateX(-50%);max-width:90vw;
+      background:var(--card2);border:1px solid var(--acc);padding:12px 18px;border-radius:14px;opacity:0;pointer-events:none;
+      transition:.25s;z-index:9999;text-align:center}
     #toast.show{opacity:1}
+
+    /* ===== DESKTOP: painel lateral à esquerda ===== */
+    @media (min-width:900px){
+      .topbar{right:auto;width:440px;padding-left:12px}
+      .sheet{right:auto;left:12px;width:416px;bottom:12px;border:1px solid var(--line);border-radius:20px;padding-bottom:0}
+      .sheet.peek{height:46vh} .sheet.full{height:calc(100vh - 300px)}
+      .fab{right:-62px;top:auto;bottom:0}
+      #toast{top:auto;bottom:24px}
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="brand"><b>⛽ TanqueCheio</b><small>Rode mais, pague menos.</small></div>
-    <div id="gpsStatus" class="gps" role="status" aria-live="polite">GPS: buscando…</div>
-  </header>
-
-  <section class="busca" aria-label="Buscar rota">
-    <input id="origem"  type="text" placeholder="Origem (vazio = minha localização)" autocomplete="off" />
-    <input id="destino" type="text" placeholder="Destino (ex.: Salvador, BA)" autocomplete="off" />
-    <button id="btnRota" class="btn">Buscar postos na rota</button>
-    <div class="chips" id="chipsCombustivel" role="group" aria-label="Tipo de combustível"></div>
-  </section>
-
   <div id="map" aria-label="Mapa"></div>
 
-  <nav class="tabs" role="tablist">
-    <button role="tab" id="tabRota"     aria-selected="true"  data-aba="rota">Na rota</button>
-    <button role="tab" id="tabProximos" aria-selected="false" data-aba="proximos">Próximos</button>
-  </nav>
+  <!-- TOPO: marca + status do GPS, busca de destino, tipo de combustível -->
+  <header class="topbar" id="topbar">
+    <div class="top-row">
+      <span class="brand">⛽ TanqueCheio</span>
+      <button id="gpsStatus" class="gps warn" type="button">📍 Buscando GPS…</button>
+    </div>
+    <div class="search card">
+      <div class="field">
+        <input id="destino" type="text" placeholder="Para onde você vai?" autocomplete="off" enterkeyhint="search" />
+        <button id="btnLimpar" class="clear" type="button" hidden aria-label="Limpar rota">✕</button>
+        <button id="btnRota" class="go" type="button" aria-label="Buscar postos na rota">➜</button>
+      </div>
+      <button id="btnOrigem" class="link" type="button">De: minha localização ▾</button>
+      <input id="origem" type="text" placeholder="Origem (ex.: Aracaju, SE)" autocomplete="off" hidden />
+    </div>
+    <div class="chips" id="chipsCombustivel" role="group" aria-label="Tipo de combustível"></div>
+  </header>
 
-  <main id="lista" aria-live="polite"></main>
+  <!-- PAINEL INFERIOR: lista de postos (arraste/toque na alça para expandir) -->
+  <section class="sheet peek" id="sheet" aria-label="Postos">
+    <button class="fab" id="btnCentro" type="button" aria-label="Centralizar na minha localização">◎</button>
+    <div class="sheet-head" id="sheetHead">
+      <button class="handle" id="handle" type="button" aria-label="Expandir ou recolher lista"><i></i></button>
+      <nav class="tabs" role="tablist">
+        <button role="tab" id="tabRota"     aria-selected="false" data-aba="rota">Na rota</button>
+        <button role="tab" id="tabProximos" aria-selected="true"  data-aba="proximos">Próximos</button>
+      </nav>
+    </div>
+    <div id="lista" aria-live="polite"></div>
+    <div class="attr" id="attr"></div>
+  </section>
 
   <!-- Modal rápido de atualização de preço -->
   <dialog id="modalPreco">
     <h2 id="mpNome">Posto</h2>
     <div class="meta" id="mpInfo"></div>
     <form id="formPreco" method="dialog">
-      <!-- Confirmação com 1 toque: aparece só quando o posto já tem preço cadastrado -->
       <button class="btn" id="mpConfirmar" type="button" hidden></button>
       <label>Combustível
         <select id="mpTipo"></select>
