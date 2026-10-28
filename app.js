@@ -41,6 +41,9 @@ const S = {
   aba: 'proximos',
   postos: [], selId: null, postoAtivo: null,
   sheet: 'peek', sessao: null,
+  cacheAba: { rota: [], proximos: [] },   // última lista de cada aba (troca de aba mostra na hora)
+  req: { rota: 0, proximos: 0 },          // contador para descartar respostas atrasadas
+  carregando: false, semeada: null,
 };
 
 // ---------- 3. UTILS ----------
@@ -183,7 +186,11 @@ function onPos(p) {
   const eraOk = S.locEstado === 'ok';
   S.locEstado = 'ok'; atualizarPill();
   if (!eraOk) renderLista();                                // some o aviso de permissão
-  if (S.primeiroFix) { S.primeiroFix = false; centralizarEm(ll, 14); buscarProximos(); }
+  if (S.primeiroFix) {
+    S.primeiroFix = false; centralizarEm(ll, 14);
+    if (S.aba === 'proximos') { S.carregando = true; renderLista(); }
+    buscarProximos();
+  }
   atualizarBotoesGeofence();
 
   // Segurança: se o veículo começar a andar com o modal aberto, fecha na hora
@@ -233,7 +240,7 @@ function podeAtualizar(p) {
 }
 function textoBotao(p) {                                   // curto, cabe no card
   if (!S.userPos) return '📍 Sem GPS';
-  if (S.userPos.acc > CONFIG.GPS_MAX_ACCURACY_M) return '📍 GPS fraco';
+  if (S.userPos.acc > CONFIG.GPS_MAX_ACCURACY_M) return `📍 GPS fraco ±${Math.round(S.userPos.acc)} m`;
   const d = distAtePosto(p);
   if (d > CONFIG.GEOFENCE_M) return `🔒 a ${fmtDist(d)}`;
   if (!parado()) return '🛑 Pare p/ editar';
@@ -269,7 +276,7 @@ async function obterRota(o, d) {
 }
 // Lê postos amenity=fuel do OSM e envia ao Supabase (insert-only). `aroundArg` = "raio,lat,lng[,lat,lng...]"
 async function semearPostosOSM(aroundArg) {
-  if (!CONFIG.SEMEAR_PELO_CLIENTE || !navigator.onLine) return;
+  if (!CONFIG.SEMEAR_PELO_CLIENTE || !navigator.onLine) return 0;
   await S.sessao;                                           // a RPC exige sessão (anônima)
   const q = `[out:json][timeout:25];nwr["amenity"="fuel"](around:${aroundArg});out center tags;`;
   const r = await fetch(`${CONFIG.OVERPASS}?data=${encodeURIComponent(q)}`);
@@ -279,7 +286,12 @@ async function semearPostosOSM(aroundArg) {
     osm_ref: `${e.type}/${e.id}`, nome: e.tags?.name || e.tags?.brand || '', marca: e.tags?.brand || '',
     lat: e.lat ?? e.center?.lat, lng: e.lon ?? e.center?.lon,
   })).filter((p) => p.lat != null && p.lng != null);
-  for (let i = 0; i < lista.length; i += 400) await sb.rpc('upsert_postos_osm', { p_postos: lista.slice(i, i + 400) });
+  let novos = 0;
+  for (let i = 0; i < lista.length; i += 400) {
+    const { data } = await sb.rpc('upsert_postos_osm', { p_postos: lista.slice(i, i + 400) });
+    novos += Number(data) || 0;
+  }
+  return novos;                                             // só recarrega a lista se entrou posto novo
 }
 
 // ---------- 8. SUPABASE ----------
@@ -313,53 +325,85 @@ async function tracarRota() {
     // Semeia postos do OSM só no corredor da rota (pontos a cada ~3 km, máx. 120)
     let pts = decimar(coords, 3000); const passo = Math.ceil(pts.length / 120);
     pts = pts.filter((_, i) => i % passo === 0);
-    try { await semearPostosOSM(`600,${pts.map(([lng, lat]) => `${lat.toFixed(5)},${lng.toFixed(5)}`).join(',')}`); }
-    catch (e) { console.warn('Semeadura OSM falhou (segue com a base atual):', e); }
-    await buscarNaRota();
+    S.carregando = true; renderLista();
+    await buscarNaRota();                                   // 1) mostra já o que está no banco
+    try {                                                   // 2) completa com o OSM e atualiza se entrou posto novo
+      const novos = await semearPostosOSM(`600,${pts.map(([lng, lat]) => `${lat.toFixed(5)},${lng.toFixed(5)}`).join(',')}`);
+      if (novos > 0) await buscarNaRota();
+    } catch (e) { console.warn('Semeadura OSM falhou (segue com a base atual):', e); }
   } catch (e) { toast(e.message); }
   finally { btn.disabled = false; btn.textContent = '➜'; }
 }
 function limparRota() {
   if (S.camadaRota) S.camadaRota.remove();
   S.camadaRota = null; S.rota = null; $('destino').value = ''; $('btnLimpar').hidden = true;
-  S.aba = 'proximos'; marcarAbas(); buscarProximos();
+  S.cacheAba.rota = []; trocarAba('proximos');
 }
 
 async function buscarNaRota() {
-  if (!S.rota) { S.postos = []; return renderLista(); }
+  if (!S.rota) {
+    S.cacheAba.rota = [];
+    if (S.aba === 'rota') { S.postos = []; S.carregando = false; renderLista(); }
+    return;
+  }
+  const meu = ++S.req.rota;                                 // descarta respostas atrasadas (troca rápida de aba/combustível)
   const { data, error } = await sb.rpc('buscar_postos_na_rota', {
     p_rota: S.rota, p_tipo: S.combustivel, p_buffer_m: CONFIG.BUFFER_ROTA_M, p_limite: 40,
   });
-  aplicarResultado('rota', data, error);
+  if (meu === S.req.rota) aplicarResultado('rota', data, error);
 }
-async function buscarProximos() {
-  if (!S.userPos) { S.postos = []; return renderLista(); }
-  try { await semearPostosOSM(`6000,${S.userPos.lat.toFixed(5)},${S.userPos.lng.toFixed(5)}`); } catch { /* offline ok */ }
+
+async function consultarProximos() {
+  const meu = ++S.req.proximos;
   const { data, error } = await sb.rpc('buscar_postos_proximos', {
     p_lat: S.userPos.lat, p_lng: S.userPos.lng, p_tipo: S.combustivel, p_raio_m: 6000, p_limite: 40,
   });
-  aplicarResultado('proximos', data, error);
+  if (meu === S.req.proximos) aplicarResultado('proximos', data, error);
 }
-// Sucesso => guarda no localStorage. Erro/offline => mostra o último resultado salvo.
+
+// Só consulta o OSM de novo se você andou mais de 1,5 km ou passaram 30 min (evita espera a cada troca de aba/combustível)
+function precisaSemear() {
+  const s = S.semeada;
+  return !s || haversine(s, S.userPos) > 1500 || Date.now() - s.ts > 30 * 60 * 1000;
+}
+async function buscarProximos() {
+  if (!S.userPos) {
+    S.cacheAba.proximos = [];
+    if (S.aba === 'proximos') { S.postos = []; S.carregando = false; renderLista(); }
+    return;
+  }
+  await consultarProximos();                                // 1) mostra já o que está no banco
+  if (!navigator.onLine || !precisaSemear()) return;
+  S.semeada = { lat: S.userPos.lat, lng: S.userPos.lng, ts: Date.now() };
+  try {                                                     // 2) completa com o OSM e atualiza se entrou posto novo
+    const novos = await semearPostosOSM(`6000,${S.userPos.lat.toFixed(5)},${S.userPos.lng.toFixed(5)}`);
+    if (novos > 0) await consultarProximos();
+  } catch { S.semeada = null; }
+}
+
+// Sucesso => guarda na memória e no localStorage. Erro/offline => usa o último resultado salvo.
 function aplicarResultado(aba, data, error) {
-  if (aba !== S.aba) return;                                // usuário já trocou de aba: ignora resposta atrasada
   const chave = `tc:${aba}:${S.combustivel}`;
+  let lista;
   if (error) {
     const salvo = JSON.parse(localStorage.getItem(chave) || 'null');
-    if (salvo) { toast('Sem conexão: mostrando dados salvos'); S.postos = salvo.postos; }
-    else { toast('Erro ao buscar postos'); S.postos = []; }
+    lista = salvo?.postos ?? [];
+    if (aba === S.aba) toast(salvo ? 'Sem conexão: mostrando dados salvos' : 'Erro ao buscar postos');
   } else {
-    S.postos = data || [];
-    try { localStorage.setItem(chave, JSON.stringify({ postos: S.postos, ts: Date.now() })); } catch { /* quota */ }
+    lista = data || [];
+    try { localStorage.setItem(chave, JSON.stringify({ postos: lista, ts: Date.now() })); } catch { /* quota */ }
   }
-  renderLista();
+  S.cacheAba[aba] = lista;
+  if (aba === S.aba) { S.postos = lista; S.carregando = false; renderLista(); }
 }
 function marcarAbas() {
   document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.aba === S.aba)));
 }
 function trocarAba(aba) {
-  S.aba = aba; marcarAbas(); S.postos = []; renderLista();
-  (aba === 'rota' ? buscarNaRota : buscarProximos)();
+  S.aba = aba; marcarAbas();
+  S.postos = S.cacheAba[aba];                               // mostra na hora o que essa aba já tinha carregado
+  S.carregando = !S.postos.length; renderLista();
+  (aba === 'rota' ? buscarNaRota : buscarProximos)();       // e atualiza em segundo plano
 }
 
 // ---------- 9. RENDER ----------
@@ -409,6 +453,7 @@ function renderLista() {
   const melhorId = S.postos[0]?.preco != null ? S.postos[0].id : null;     // lista já vem ordenada por preço
   let corpo;
   if (S.postos.length) corpo = S.postos.map((p) => cardHtml(p, melhorId)).join('');
+  else if (S.carregando) corpo = '<div class="vazio-msg">Buscando postos…</div>';
   else if (S.aba === 'rota') corpo = `<div class="vazio-msg">${S.rota ? 'Nenhum posto encontrado nesse trajeto.' : 'Digite um destino lá em cima para ver os postos no seu caminho.'}</div>`;
   else corpo = precisaAcao || S.locEstado === 'verificando' ? '' : `<div class="vazio-msg">${S.userPos ? 'Nenhum posto por perto ainda.' : 'Buscando sua localização…'}</div>`;
   $('lista').innerHTML = locBoxHtml() + corpo;
@@ -525,6 +570,7 @@ async function init() {
     const b = e.target.closest('[data-comb]'); if (!b) return;
     S.combustivel = b.dataset.comb; localStorage.setItem('tc:comb', S.combustivel);
     document.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c === b)));
+    S.cacheAba = { rota: [], proximos: [] }; S.postos = []; S.carregando = true; renderLista();
     (S.aba === 'rota' ? buscarNaRota : buscarProximos)();
   });
   document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => trocarAba(b.dataset.aba)));
