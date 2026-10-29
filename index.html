@@ -35,8 +35,10 @@
     .topbar>*{pointer-events:auto}
     .top-row{display:flex;justify-content:space-between;align-items:center;gap:8px;pointer-events:none}
     .top-row>*{pointer-events:auto}
-    .brand{font-weight:800;font-size:.9rem;color:var(--acc);background:rgba(24,24,27,.86);
-      padding:7px 12px;border-radius:99px;backdrop-filter:blur(6px)}
+    .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:.95rem;
+  background:rgba(24,24,27,.92);border:1px solid var(--line);border-radius:10px;padding:5px 12px 5px 5px}
+.logo{display:grid;place-items:center;width:30px;height:30px;border-radius:7px;
+  background:var(--acc);color:var(--acc-ink);font-size:1.05rem}
     .gps{font-size:.8rem;font-weight:600;padding:7px 12px;border-radius:99px;border:1px solid var(--line);
       background:rgba(24,24,27,.86);backdrop-filter:blur(6px);min-height:34px}
     .gps.ok{color:var(--acc);border-color:var(--acc)}
@@ -152,7 +154,7 @@
   <!-- TOPO: marca + status do GPS, busca de destino, tipo de combustível -->
   <header class="topbar" id="topbar">
     <div class="top-row">
-      <span class="brand">⛽ TanqueCheio</span>
+      <div class="brand"><span class="logo">⛽</span>TanqueCheio</div>
       <button id="gpsStatus" class="gps warn" type="button">📍 Buscando GPS…</button>
     </div>
     <div class="search card">
