@@ -13,7 +13,7 @@ const CONFIG = {
   GPS_MAX_ACCURACY_M: 100,                 // GPS pior que isso não libera atualização
   VELOCIDADE_MAX_KMH: 5,                   // acima disso = "em movimento"
   BUFFER_ROTA_M: 500,
-  SEMEAR_PELO_CLIENTE: true,               // false quando a Edge Function já popular os postos
+  SEMEAR_PELO_CLIENTE: false,               // false quando a Edge Function já popular os postos
   OVERPASS: 'https://overpass-api.de/api/interpreter',
   OSRM: 'https://router.project-osrm.org/route/v1/driving', // demo: só para testes
   NOMINATIM: 'https://nominatim.openstreetmap.org/search',
